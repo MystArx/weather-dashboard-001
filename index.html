@@ -175,6 +175,22 @@
             color: #ff8a80;
         }
 
+        /* New styles for footer */
+        .footer {
+            margin-top: 20px;
+            font-size: 0.9em;
+            color: #777;
+            text-align: center;
+        }
+
+        body.dark-mode .footer {
+            color: #bbb;
+        }
+
+        #lastUpdated {
+            margin: 0;
+        }
+
         /* Responsive adjustments */
         @media (max-width: 500px) {
             .input-group {
@@ -226,6 +242,9 @@
             <p id="conditionDisplay"></p>
         </div>
         <div id="errorMessage"></div>
+        <div class="footer">
+            <p id="lastUpdated">Last updated: Never</p>
+        </div>
     </div>
 
     <script>
@@ -243,24 +262,42 @@
         const weatherIcon = document.getElementById('weatherIcon');
         const conditionDisplay = document.getElementById('conditionDisplay');
         const errorMessage = document.getElementById('errorMessage');
+        const lastUpdatedDisplay = document.getElementById('lastUpdated'); // New element reference
+
+        let autoRefreshTimer = null; // Variable to hold the interval ID for auto-refresh
+
+        // Function to update the last updated time display
+        function updateLastUpdatedTime() {
+            const now = new Date();
+            lastUpdatedDisplay.textContent = `Last updated: ${now.toLocaleTimeString()}`;
+        }
 
         // Function to fetch weather data
         async function fetchWeatherData() {
+            // Clear any existing auto-refresh timer to prevent multiple timers or stale timers
+            if (autoRefreshTimer) {
+                clearInterval(autoRefreshTimer);
+                autoRefreshTimer = null;
+            }
+
             const city = cityInput.value.trim();
 
             if (!city) {
                 showError('Please enter a city name.');
+                // Do not start auto-refresh if no city is entered
+                // `clearDisplay` (called by showError) will reset `lastUpdatedDisplay`
                 return;
             }
 
             if (OPENWEATHER_API_KEY === 'YOUR_API_KEY' || !OPENWEATHER_API_KEY) {
                 showError('Please replace "YOUR_API_KEY" in the JavaScript with your actual OpenWeatherMap API key.');
+                // Do not start auto-refresh if API key is invalid
+                // `clearDisplay` (called by showError) will reset `lastUpdatedDisplay`
                 return;
             }
 
-            // Clear previous error and weather data
-            clearDisplay();
-            showError(''); // Hide error message
+            // Clear previous error message (weather display will be cleared on error or updated on success)
+            errorMessage.style.display = 'none';
 
             const apiUrl = `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${OPENWEATHER_API_KEY}&units=metric`;
 
@@ -277,8 +314,14 @@
                     weatherIcon.src = `https://openweathermap.org/img/wn/${iconCode}@2x.png`;
                     weatherIcon.alt = data.weather[0].description;
                     weatherIcon.style.display = 'block'; // Show icon
+                    
+                    updateLastUpdatedTime(); // Update time on successful fetch
+
+                    // Start auto-refresh for the current city
+                    autoRefreshTimer = setInterval(fetchWeatherData, 10 * 60 * 1000); // Refresh every 10 minutes
 
                 } else {
+                    // Handle API errors
                     if (data.cod === '404') {
                         showError('City not found. Please check the spelling.');
                     } else if (data.cod === 401) { // Common error for invalid API key
@@ -287,10 +330,14 @@
                     else {
                         showError(`Error: ${data.message || 'Something went wrong.'}`);
                     }
+                    // When an error occurs during fetch, clear weather display and ensure auto-refresh is stopped
+                    clearDisplay(); // This also stops the timer and resets last updated text
                 }
             } catch (error) {
                 console.error('Fetch error:', error);
                 showError('Could not fetch weather data. Please check your internet connection or try again later.');
+                // On network error, clear weather display and ensure auto-refresh is stopped
+                clearDisplay(); // This also stops the timer and resets last updated text
             }
         }
 
@@ -302,6 +349,13 @@
             weatherIcon.src = '';
             weatherIcon.alt = '';
             weatherIcon.style.display = 'none'; // Hide icon
+            
+            // Stop auto-refresh if display is cleared manually or by error
+            if (autoRefreshTimer) {
+                clearInterval(autoRefreshTimer);
+                autoRefreshTimer = null;
+            }
+            lastUpdatedDisplay.textContent = 'Last updated: Never'; // Reset status
         }
 
         // Function to show error messages
@@ -309,9 +363,12 @@
             errorMessage.textContent = message;
             errorMessage.style.display = message ? 'block' : 'none';
             if (message) {
-                // Clear weather info only if there's a new error message
-                if (cityNameDisplay.textContent !== 'Enter a city to see weather') {
-                    clearDisplay(); 
+                // If an error is shown, we should clear the weather display state
+                // and ensure no auto-refresh is active for potentially bad data.
+                // The clearDisplay() function already handles stopping the timer and resetting text.
+                // Only call clearDisplay if it's not already in a 'cleared' state, to avoid redundant resets.
+                if (cityNameDisplay.textContent !== 'Enter a city to see weather' || tempDisplay.textContent !== '') {
+                    clearDisplay();
                 }
             }
         }
